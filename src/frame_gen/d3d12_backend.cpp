@@ -62,13 +62,11 @@ float4 main(PSInput input) : SV_Target {
 }
 )";
 
-// Simple pass-through compute for optical flow placeholder
 static const char* g_OpticalFlowCS = R"(
 RWTexture2D<float2> motionVectors : register(u0);
 
 [numthreads(8, 8, 1)]
 void main(uint3 DTid : SV_DispatchThreadID) {
-    // Placeholder: zero motion
     motionVectors[DTid.xy] = float2(0, 0);
 }
 )";
@@ -96,7 +94,6 @@ bool D3D12FrameGenerator::Initialize(ID3D12CommandQueue* commandQueue, IDXGISwap
         return false;
     }
     
-    // Get swapchain desc
     DXGI_SWAP_CHAIN_DESC swDesc;
     swapChain->GetDesc(&swDesc);
     m_Width = swDesc.BufferDesc.Width;
@@ -105,7 +102,6 @@ bool D3D12FrameGenerator::Initialize(ID3D12CommandQueue* commandQueue, IDXGISwap
     if (!CreateDeviceResources(m_Device.Get())) return false;
     if (!CreateWindowSizeDependentResources(m_Width, m_Height)) return false;
     
-    // Create fence for synchronization
     hr = m_Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_Fence));
     if (FAILED(hr)) return false;
     m_FenceValue = 1;
@@ -122,13 +118,10 @@ void D3D12FrameGenerator::Shutdown() {
         CloseHandle(m_FenceEvent);
         m_FenceEvent = nullptr;
     }
-    
-    // Release ComPtrs automatically
     m_Initialized = false;
 }
 
 bool D3D12FrameGenerator::CreateDeviceResources(ID3D12Device* device) {
-    // Create descriptor heaps
     D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
     srvHeapDesc.NumDescriptors = 16; 
     srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -144,42 +137,30 @@ bool D3D12FrameGenerator::CreateDeviceResources(ID3D12Device* device) {
     m_SrvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     m_RtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     
-    // Create command allocator & list
     if (FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_CommandAllocator)))) return false;
     if (FAILED(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_CommandAllocator.Get(), nullptr, IID_PPV_ARGS(&m_CommandList)))) return false;
-    m_CommandList->Close(); // Start closed
+    m_CommandList->Close(); 
     
     return CompileShaders();
 }
 
 bool D3D12FrameGenerator::CompileShaders() {
-    ComPtr<ID3DBlob> signature;
     ComPtr<ID3DBlob> error;
     
-    // For simplicity, we just serialize a basic root signature here or dynamic compilation
-    // But since we are restricted in tools, let's try to compile the root signature from string if possible, or build it manually
-    // Manually building root signature is safer without complex d3dcompiler
-    
-    D3D12_DESCRIPTOR_RANGE ranges[3];
+    D3D12_DESCRIPTOR_RANGE ranges[3] = {};
     ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
     ranges[0].NumDescriptors = 3;
-    ranges[0].BaseShaderRegister = 0;
-    ranges[0].RegisterSpace = 0;
     ranges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
     
     ranges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
     ranges[1].NumDescriptors = 1;
-    ranges[1].BaseShaderRegister = 0;
-    ranges[1].RegisterSpace = 0;
     ranges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
     
     ranges[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
     ranges[2].NumDescriptors = 1;
-    ranges[2].BaseShaderRegister = 0;
-    ranges[2].RegisterSpace = 0;
     ranges[2].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
     
-    D3D12_ROOT_PARAMETER parameters[1];
+    D3D12_ROOT_PARAMETER parameters[1] = {};
     parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
     parameters[0].DescriptorTable.NumDescriptorRanges = 3;
     parameters[0].DescriptorTable.pDescriptorRanges = ranges;
@@ -187,9 +168,9 @@ bool D3D12FrameGenerator::CompileShaders() {
     
     D3D12_STATIC_SAMPLER_DESC sampler = {};
     sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-    sampler.AddressU = D3D12_TEXTURE_ADDRESS_CLAMP;
-    sampler.AddressV = D3D12_TEXTURE_ADDRESS_CLAMP;
-    sampler.AddressW = D3D12_TEXTURE_ADDRESS_CLAMP;
+    sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     
     D3D12_ROOT_SIGNATURE_DESC rootSigDesc = {};
@@ -203,7 +184,6 @@ bool D3D12FrameGenerator::CompileShaders() {
     if (FAILED(D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &rsBlob, &error))) return false;
     if (FAILED(m_Device->CreateRootSignature(0, rsBlob->GetBufferPointer(), rsBlob->GetBufferSize(), IID_PPV_ARGS(&m_RootSignature)))) return false;
     
-    // Compile HLSL
     ComPtr<ID3DBlob> vsBlob, psBlob;
     D3DCompile(g_VS, strlen(g_VS), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, &vsBlob, nullptr);
     D3DCompile(g_InterpolationPS, strlen(g_InterpolationPS), nullptr, nullptr, nullptr, "main", "ps_5_0", 0, 0, &psBlob, nullptr);
@@ -213,14 +193,42 @@ bool D3D12FrameGenerator::CompileShaders() {
         return false;
     }
     
-    // Create PSO
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
     psoDesc.pRootSignature = m_RootSignature.Get();
     psoDesc.VS = { vsBlob->GetBufferPointer(), vsBlob->GetBufferSize() };
     psoDesc.PS = { psBlob->GetBufferPointer(), psBlob->GetBufferSize() };
-    psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-    psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    
+    D3D12_RASTERIZER_DESC rasterizerState = {};
+    rasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+    rasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+    rasterizerState.FrontCounterClockwise = FALSE;
+    rasterizerState.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
+    rasterizerState.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
+    rasterizerState.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
+    rasterizerState.DepthClipEnable = TRUE;
+    rasterizerState.MultisampleEnable = FALSE;
+    rasterizerState.AntialiasedLineEnable = FALSE;
+    rasterizerState.ForcedSampleCount = 0;
+    rasterizerState.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+    psoDesc.RasterizerState = rasterizerState;
+
+    D3D12_BLEND_DESC blendState = {};
+    blendState.AlphaToCoverageEnable = FALSE;
+    blendState.IndependentBlendEnable = FALSE;
+    blendState.RenderTarget[0].BlendEnable = FALSE;
+    blendState.RenderTarget[0].LogicOpEnable = FALSE;
+    blendState.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
+    blendState.RenderTarget[0].DestBlend = D3D12_BLEND_ZERO;
+    blendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+    blendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+    blendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+    blendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+    blendState.RenderTarget[0].LogicOp = D3D12_LOGIC_OP_NOOP;
+    blendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+    psoDesc.BlendState = blendState;
+    
     psoDesc.DepthStencilState.DepthEnable = FALSE;
+    psoDesc.DepthStencilState.StencilEnable = FALSE;
     psoDesc.SampleMask = UINT_MAX;
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     psoDesc.NumRenderTargets = 1;
@@ -233,7 +241,6 @@ bool D3D12FrameGenerator::CompileShaders() {
 }
 
 bool D3D12FrameGenerator::CreateWindowSizeDependentResources(UINT width, UINT height) {
-    // Recreate textures
     m_FrameHistory[0].Reset();
     m_FrameHistory[1].Reset();
     m_InterpolatedFrame.Reset();
@@ -251,9 +258,26 @@ bool D3D12FrameGenerator::CreateWindowSizeDependentResources(UINT width, UINT he
     CreateTextureResource(m_Device.Get(), width, height, DXGI_FORMAT_R16G16_FLOAT, 
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, m_MotionVectors, L"MotionVec");
     
-    // Create Constant Buffer (Upload heap for dynamic update)
-    D3D12_HEAP_PROPERTIES uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-    D3D12_RESOURCE_DESC cbDesc = CD3DX12_RESOURCE_DESC::Buffer(256); // 256 byte aligned
+    D3D12_HEAP_PROPERTIES uploadHeap = {};
+    uploadHeap.Type = D3D12_HEAP_TYPE_UPLOAD;
+    uploadHeap.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    uploadHeap.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    uploadHeap.CreationNodeMask = 1;
+    uploadHeap.VisibleNodeMask = 1;
+    
+    D3D12_RESOURCE_DESC cbDesc = {};
+    cbDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    cbDesc.Alignment = 0;
+    cbDesc.Width = 256;
+    cbDesc.Height = 1;
+    cbDesc.DepthOrArraySize = 1;
+    cbDesc.MipLevels = 1;
+    cbDesc.Format = DXGI_FORMAT_UNKNOWN;
+    cbDesc.SampleDesc.Count = 1;
+    cbDesc.SampleDesc.Quality = 0;
+    cbDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    cbDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+    
     m_Device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &cbDesc, 
         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_ConstantBuffer));
         
@@ -269,8 +293,19 @@ void D3D12FrameGenerator::CreateTextureResource(
     ComPtr<ID3D12Resource>& resource,
     LPCWSTR name
 ) {
-    D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(format, width, height, 1, 1, 1, 0, flags);
+    D3D12_HEAP_PROPERTIES heapProps = {};
+    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+    
+    D3D12_RESOURCE_DESC desc = {};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    desc.Width = width;
+    desc.Height = height;
+    desc.DepthOrArraySize = 1;
+    desc.MipLevels = 1;
+    desc.Format = format;
+    desc.SampleDesc.Count = 1;
+    desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    desc.Flags = flags;
     
     device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, initialState, nullptr, IID_PPV_ARGS(&resource));
     if (resource) resource->SetName(name);
@@ -280,46 +315,49 @@ void D3D12FrameGenerator::CreateTextureResource(
 void D3D12FrameGenerator::ProcessFrame() {
     if (!m_Initialized) return;
     
-    // Synchronize frame execution
     m_CommandAllocator->Reset();
     m_CommandList->Reset(m_CommandAllocator.Get(), m_InterpolationPSO.Get());
     
-    // Get current backbuffer
     UINT backBufferIndex = m_SwapChain->GetCurrentBackBufferIndex();
     ComPtr<ID3D12Resource> backBuffer;
     m_SwapChain->GetBuffer(backBufferIndex, IID_PPV_ARGS(&backBuffer));
     
-    // 1. Copy Backbuffer to History[m_CurrentFrameIndex]
-    D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(backBuffer.Get(), 
-        D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition.pResource = backBuffer.Get();
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
     m_CommandList->ResourceBarrier(1, &barrier);
     
-    // Copy
-    D3D12_RESOURCE_BARRIER copyDestBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_FrameHistory[m_CurrentFrameIndex].Get(), 
-        D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+    D3D12_RESOURCE_BARRIER copyDestBarrier = {};
+    copyDestBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    copyDestBarrier.Transition.pResource = m_FrameHistory[m_CurrentFrameIndex].Get();
+    copyDestBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+    copyDestBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
     m_CommandList->ResourceBarrier(1, &copyDestBarrier);
     
     m_CommandList->CopyResource(m_FrameHistory[m_CurrentFrameIndex].Get(), backBuffer.Get());
     
-    D3D12_RESOURCE_BARRIER copyReadBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_FrameHistory[m_CurrentFrameIndex].Get(), 
-        D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    D3D12_RESOURCE_BARRIER copyReadBarrier = {};
+    copyReadBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    copyReadBarrier.Transition.pResource = m_FrameHistory[m_CurrentFrameIndex].Get();
+    copyReadBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    copyReadBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     m_CommandList->ResourceBarrier(1, &copyReadBarrier);
     
-    // Restore backbuffer to PRE_PRESENT state for later
-    D3D12_RESOURCE_BARRIER restoreBarrier = CD3DX12_RESOURCE_BARRIER::Transition(backBuffer.Get(), 
-        D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PRESENT);
+    D3D12_RESOURCE_BARRIER restoreBarrier = {};
+    restoreBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    restoreBarrier.Transition.pResource = backBuffer.Get();
+    restoreBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    restoreBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
     m_CommandList->ResourceBarrier(1, &restoreBarrier);
     
     m_CurrentFrameIndex = (m_CurrentFrameIndex + 1) % 2;
     m_TotalFrames++;
     
-    // Only generate every other frame 
     if (m_TotalFrames % 2 == 0) {
-        // Run Interpolation !
-        // Setup Descriptors
         D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = m_SrvUavHeap->GetCPUDescriptorHandleForHeapStart();
         
-        // 1. Prev Frame SRV
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
         srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -329,11 +367,9 @@ void D3D12FrameGenerator::ProcessFrame() {
         m_Device->CreateShaderResourceView(m_FrameHistory[(m_CurrentFrameIndex + 1) % 2].Get(), &srvDesc, srvHandle);
         srvHandle.ptr += m_SrvDescriptorSize;
         
-        // 2. Curr Frame SRV (the one we just copied)
         m_Device->CreateShaderResourceView(m_FrameHistory[m_CurrentFrameIndex].Get(), &srvDesc, srvHandle);
         srvHandle.ptr += m_SrvDescriptorSize;
         
-        // 3. Motion Vectors (Placeholder)
         D3D12_SHADER_RESOURCE_VIEW_DESC mvDesc = {};
         mvDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
         mvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -341,16 +377,17 @@ void D3D12FrameGenerator::ProcessFrame() {
         mvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         m_Device->CreateShaderResourceView(m_MotionVectors.Get(), &mvDesc, srvHandle);
         
-        // Setup RTV for Interpolated Frame
         D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = m_RtvHeap->GetCPUDescriptorHandleForHeapStart();
         D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
         rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
         rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
         m_Device->CreateRenderTargetView(m_InterpolatedFrame.Get(), &rtvDesc, rtvHandle);
         
-        // Render
-        D3D12_RESOURCE_BARRIER renderBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_InterpolatedFrame.Get(), 
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        D3D12_RESOURCE_BARRIER renderBarrier = {};
+        renderBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        renderBarrier.Transition.pResource = m_InterpolatedFrame.Get();
+        renderBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        renderBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
         m_CommandList->ResourceBarrier(1, &renderBarrier);
         
         m_CommandList->SetGraphicsRootSignature(m_RootSignature.Get());
@@ -370,33 +407,27 @@ void D3D12FrameGenerator::ProcessFrame() {
         m_CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         m_CommandList->DrawInstanced(3, 1, 0, 0);
         
-        // Transition back to copy source
-        D3D12_RESOURCE_BARRIER afterRenderBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_InterpolatedFrame.Get(), 
-            D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        D3D12_RESOURCE_BARRIER afterRenderBarrier = {};
+        afterRenderBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        afterRenderBarrier.Transition.pResource = m_InterpolatedFrame.Get();
+        afterRenderBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        afterRenderBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
         m_CommandList->ResourceBarrier(1, &afterRenderBarrier);
         
-        // Present this frame! 
-        // We copy interpolated content to Backbuffer
-        // Wait.. if we copy to backbuffer, we overwrite the current game frame.
-        // True Frame Gen inserts a Present call with the interpolated frame.
-        // Since we are inside a Hooked Present, we can:
-        // 1. Present the Interpolated Frame (by copying to SwapChain and calling OriginalPresent)
-        // 2. Then proceed to Present the Real Frame.
-        
-        // For simplicity in this step: We just overwrite the current frame contents with interpolated one to prove it works.
-        // To really boost FPS we need to call Swapchain->Present() TWICE.
-        // But doing that inside a Hooked Present is dangerous (infinite recursion).
-        // Solution: Call the TRAMPOLINE Present (s_OriginalPresent12).
-        
-        // Copy Interpolated -> Backbuffer
-        D3D12_RESOURCE_BARRIER bbToDest = CD3DX12_RESOURCE_BARRIER::Transition(backBuffer.Get(), 
-            D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST);
+        D3D12_RESOURCE_BARRIER bbToDest = {};
+        bbToDest.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        bbToDest.Transition.pResource = backBuffer.Get();
+        bbToDest.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+        bbToDest.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
         m_CommandList->ResourceBarrier(1, &bbToDest);
         
         m_CommandList->CopyResource(backBuffer.Get(), m_InterpolatedFrame.Get());
         
-        D3D12_RESOURCE_BARRIER bbToPresent = CD3DX12_RESOURCE_BARRIER::Transition(backBuffer.Get(), 
-            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT);
+        D3D12_RESOURCE_BARRIER bbToPresent = {};
+        bbToPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        bbToPresent.Transition.pResource = backBuffer.Get();
+        bbToPresent.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        bbToPresent.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
         m_CommandList->ResourceBarrier(1, &bbToPresent);
     }
     
@@ -405,7 +436,6 @@ void D3D12FrameGenerator::ProcessFrame() {
     ID3D12CommandList* lists[] = { m_CommandList.Get() };
     m_CommandQueue->ExecuteCommandLists(1, lists);
     
-    // Wait
     m_CommandQueue->Signal(m_Fence.Get(), m_FenceValue);
     m_Fence->SetEventOnCompletion(m_FenceValue, m_FenceEvent);
     WaitForSingleObject(m_FenceEvent, INFINITE);
