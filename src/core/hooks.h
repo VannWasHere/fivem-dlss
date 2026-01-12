@@ -16,6 +16,11 @@
 #include <functional>
 #include <memory>
 
+// D3D12 Global Exports
+bool InitD3D12Hooks(HWND gameWindow);
+void SetD3D12Quality(int quality);
+void SetD3D12Overlay(void* overlay);
+
 namespace FiveMFrameGen {
 namespace Core {
 

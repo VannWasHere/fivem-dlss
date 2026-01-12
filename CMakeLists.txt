@@ -40,6 +40,8 @@ set(SOURCES
     src/frame_gen/optical_flow.cpp
     src/frame_gen/frame_buffer.cpp
     src/frame_gen/d3d12_backend.cpp
+    src/upscaler/upscaler_d3d12.cpp
+    src/upscaler/fsr2/fsr2_stub.cpp
     src/overlay/imgui_overlay.cpp
     src/overlay/config_ui.cpp
     src/utils/logger.cpp

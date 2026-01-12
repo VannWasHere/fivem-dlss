@@ -34,8 +34,6 @@ namespace {
     
     // State
     bool g_Initialized = false;
-    FiveMFrameGen::Config g_FrameGenConfig;
-    FiveMFrameGen::Stats g_Stats = {};
     
     // Error handling
     std::string g_LastError;
@@ -44,6 +42,16 @@ namespace {
     constexpr UINT OVERLAY_TOGGLE_KEY = VK_F10;
     constexpr UINT FRAMEGEN_TOGGLE_KEY = VK_F9;
 }
+
+// Global Definitions (External Linkage)
+namespace FiveMFrameGen {
+    Config g_FrameGenConfig;
+    Stats g_Stats = {};
+}
+
+// Access local aliases
+using FiveMFrameGen::g_FrameGenConfig;
+using FiveMFrameGen::g_Stats;
 
 // Forward declaration
 void LogRaw(const char* fmt, ...);
@@ -111,350 +119,53 @@ void InitializeMod() {
     LogRaw("InitializeMod: Finished");
 }
 
-// Overlay window class and procedure
-static HWND g_SettingsWindow = nullptr;
-static const wchar_t* SETTINGS_CLASS = L"FrameGenSettings";
-
-// Button IDs
-#define BTN_TOGGLE_FRAMEGEN 101
-#define BTN_QUALITY_LEFT    102
-#define BTN_QUALITY_RIGHT   103
-#define BTN_CLOSE           104
-
-// GPU Info
-struct GPUInfo {
-    char name[256] = "Unknown GPU";
-    size_t vramMB = 0;
-    bool isNvidia = false;
-    bool isRTX40 = false;
-    bool dlssSupported = false;
-};
-static GPUInfo g_GPUInfo;
-
-void DetectGPU() {
-    IDXGIFactory1* factory = nullptr;
-    if (SUCCEEDED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void**)&factory))) {
-        IDXGIAdapter1* adapter = nullptr;
-        if (SUCCEEDED(factory->EnumAdapters1(0, &adapter))) {
-            DXGI_ADAPTER_DESC1 desc;
-            if (SUCCEEDED(adapter->GetDesc1(&desc))) {
-                size_t converted;
-                wcstombs_s(&converted, g_GPUInfo.name, desc.Description, 255);
-                g_GPUInfo.vramMB = desc.DedicatedVideoMemory / (1024 * 1024);
-                g_GPUInfo.isNvidia = (desc.VendorId == 0x10DE);
-                
-                if (g_GPUInfo.isNvidia) {
-                    if (strstr(g_GPUInfo.name, "RTX 40") || strstr(g_GPUInfo.name, "RTX 4")) {
-                        g_GPUInfo.isRTX40 = true;
-                        g_GPUInfo.dlssSupported = true;
-                    } else if (strstr(g_GPUInfo.name, "RTX 3") || strstr(g_GPUInfo.name, "RTX 2")) {
-                        g_GPUInfo.dlssSupported = true;
-                    }
-                }
-            }
-            adapter->Release();
-        }
-        factory->Release();
-    }
-    LogRaw("GPU Detected: %s (%zu MB)", g_GPUInfo.name, g_GPUInfo.vramMB);
-}
-
-void DrawButton(HDC hdc, int x, int y, int w, int h, const char* text, bool highlight) {
-    HBRUSH brush = CreateSolidBrush(highlight ? RGB(60, 120, 200) : RGB(50, 50, 70));
-    RECT r = { x, y, x + w, y + h };
-    FillRect(hdc, &r, brush);
-    DeleteObject(brush);
-    
-    // Border
-    HPEN pen = CreatePen(PS_SOLID, 1, RGB(100, 100, 120));
-    SelectObject(hdc, pen);
-    MoveToEx(hdc, x, y, NULL); LineTo(hdc, x + w, y);
-    LineTo(hdc, x + w, y + h); LineTo(hdc, x, y + h); LineTo(hdc, x, y);
-    DeleteObject(pen);
-    
-    // Text
-    SetTextColor(hdc, RGB(220, 220, 220));
-    RECT tr = { x, y, x + w, y + h };
-    DrawTextA(hdc, text, -1, &tr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-}
-
-LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    static HFONT titleFont = nullptr;
-    static HFONT textFont = nullptr;
-    static HDC memDC = nullptr;
-    static HBITMAP memBitmap = nullptr;
-    
-    switch (msg) {
-        case WM_CREATE: {
-            titleFont = CreateFontA(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, "Segoe UI");
-            textFont = CreateFontA(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, "Segoe UI");
-            return 0;
-        }
-        
-        case WM_PAINT: {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hwnd, &ps);
-            
-            RECT clientRect;
-            GetClientRect(hwnd, &clientRect);
-            int width = clientRect.right;
-            int height = clientRect.bottom;
-            
-            // Create memory DC for double buffering (no flicker)
-            if (!memDC) {
-                memDC = CreateCompatibleDC(hdc);
-                memBitmap = CreateCompatibleBitmap(hdc, width, height);
-                SelectObject(memDC, memBitmap);
-            }
-            
-            // Draw to memory DC
-            HDC dc = memDC;
-            
-            // Background
-            HBRUSH bgBrush = CreateSolidBrush(RGB(20, 22, 30));
-            FillRect(dc, &clientRect, bgBrush);
-            DeleteObject(bgBrush);
-            
-            SetBkMode(dc, TRANSPARENT);
-            int y = 12;
-            
-            // Title bar background
-            RECT titleBar = { 0, 0, width, 40 };
-            HBRUSH titleBrush = CreateSolidBrush(RGB(30, 35, 50));
-            FillRect(dc, &titleBar, titleBrush);
-            DeleteObject(titleBrush);
-            
-            // Title
-            SelectObject(dc, titleFont);
-            SetTextColor(dc, RGB(100, 180, 255));
-            TextOutA(dc, 15, 10, "Frame Generation Settings", 26);
-            
-            // Close button
-            DrawButton(dc, width - 35, 5, 30, 30, "X", false);
-            
-            y = 50;
-            
-            // GPU Section
-            SelectObject(dc, textFont);
-            SetTextColor(dc, RGB(120, 120, 140));
-            TextOutA(dc, 15, y, "GPU", 3);
-            y += 22;
-            
-            SetTextColor(dc, RGB(200, 200, 200));
-            TextOutA(dc, 15, y, g_GPUInfo.name, (int)strlen(g_GPUInfo.name));
-            y += 20;
-            
-            char vramText[64];
-            sprintf_s(vramText, "VRAM: %zu MB", g_GPUInfo.vramMB);
-            SetTextColor(dc, RGB(150, 150, 150));
-            TextOutA(dc, 15, y, vramText, (int)strlen(vramText));
-            y += 25;
-            
-            // DLSS Support
-            if (g_GPUInfo.isRTX40) {
-                SetTextColor(dc, RGB(100, 255, 100));
-                TextOutA(dc, 15, y, "DLSS 3 Frame Gen: Supported", 28);
-            } else if (g_GPUInfo.dlssSupported) {
-                SetTextColor(dc, RGB(255, 200, 100));
-                TextOutA(dc, 15, y, "DLSS: Yes | Frame Gen: Requires RTX 40", 39);
-            } else {
-                SetTextColor(dc, RGB(255, 150, 100));
-                TextOutA(dc, 15, y, "Using FSR3 Fallback", 19);
-            }
-            y += 35;
-            
-            // Separator
-            HPEN sepPen = CreatePen(PS_SOLID, 1, RGB(50, 55, 70));
-            SelectObject(dc, sepPen);
-            MoveToEx(dc, 15, y, NULL); LineTo(dc, width - 15, y);
-            DeleteObject(sepPen);
-            y += 15;
-            
-            // Frame Gen Toggle Section
-            SetTextColor(dc, RGB(120, 120, 140));
-            TextOutA(dc, 15, y, "FRAME GENERATION", 16);
-            y += 25;
-            
-            // Toggle Button
-            DrawButton(dc, 15, y, 150, 35, 
-                g_FrameGenConfig.enabled ? "ENABLED" : "DISABLED", 
-                g_FrameGenConfig.enabled);
-            y += 50;
-            
-            // Quality Section
-            SetTextColor(dc, RGB(120, 120, 140));
-            TextOutA(dc, 15, y, "QUALITY PRESET", 14);
-            y += 25;
-            
-            // Quality selector with arrows
-            const char* qualityNames[] = { "Performance", "Balanced", "Quality", "Ultra Quality" };
-            int q = static_cast<int>(g_FrameGenConfig.quality);
-            if (q < 0 || q > 3) q = 1;
-            
-            DrawButton(dc, 15, y, 30, 30, "<", false);
-            
-            // Quality display box
-            RECT qRect = { 50, y, 220, y + 30 };
-            HBRUSH qBrush = CreateSolidBrush(RGB(40, 45, 60));
-            FillRect(dc, &qRect, qBrush);
-            DeleteObject(qBrush);
-            SetTextColor(dc, RGB(100, 180, 255));
-            DrawTextA(dc, qualityNames[q], -1, &qRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-            
-            DrawButton(dc, 225, y, 30, 30, ">", false);
-            y += 45;
-            
-            // Hotkeys info
-            SetTextColor(dc, RGB(100, 100, 120));
-            TextOutA(dc, 15, y, "Hotkeys: F9 Toggle | F10 Window | F7 Quality", 45);
-            
-            // Copy memory DC to screen (no flicker)
-            BitBlt(hdc, 0, 0, width, height, memDC, 0, 0, SRCCOPY);
-            
-            EndPaint(hwnd, &ps);
-            return 0;
-        }
-        
-        case WM_LBUTTONDOWN: {
-            int x = LOWORD(lParam);
-            int y = HIWORD(lParam);
-            RECT r;
-            GetClientRect(hwnd, &r);
-            
-            // Close button
-            if (x >= r.right - 35 && x <= r.right - 5 && y >= 5 && y <= 35) {
-                g_FrameGenConfig.showOverlay = false;
-                ShowWindow(hwnd, SW_HIDE);
-                return 0;
-            }
-            
-            // Frame Gen toggle (approx y=175)
-            if (x >= 15 && x <= 165 && y >= 175 && y <= 210) {
-                g_FrameGenConfig.enabled = !g_FrameGenConfig.enabled;
-                InvalidateRect(hwnd, NULL, FALSE);
-                return 0;
-            }
-            
-            // Quality left arrow (approx y=245)
-            if (x >= 15 && x <= 45 && y >= 245 && y <= 275) {
-                int q = static_cast<int>(g_FrameGenConfig.quality);
-                q = (q - 1 + 4) % 4;
-                g_FrameGenConfig.quality = static_cast<FiveMFrameGen::QualityPreset>(q);
-                InvalidateRect(hwnd, NULL, FALSE);
-                return 0;
-            }
-            
-            // Quality right arrow
-            if (x >= 225 && x <= 255 && y >= 245 && y <= 275) {
-                int q = static_cast<int>(g_FrameGenConfig.quality);
-                q = (q + 1) % 4;
-                g_FrameGenConfig.quality = static_cast<FiveMFrameGen::QualityPreset>(q);
-                InvalidateRect(hwnd, NULL, FALSE);
-                return 0;
-            }
-            
-            // Allow dragging title bar
-            if (y < 40) {
-                ReleaseCapture();
-                SendMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
-            }
-            return 0;
-        }
-        
-        case WM_DESTROY:
-            if (memDC) { DeleteDC(memDC); memDC = nullptr; }
-            if (memBitmap) { DeleteObject(memBitmap); memBitmap = nullptr; }
-            if (titleFont) { DeleteObject(titleFont); titleFont = nullptr; }
-            if (textFont) { DeleteObject(textFont); textFont = nullptr; }
-            return 0;
-    }
-    return DefWindowProcW(hwnd, msg, wParam, lParam);
-}
-
-void CreateSettingsWindow(HWND gameWindow) {
-    DetectGPU();
-    
-    WNDCLASSEXW wc = {};
-    wc.cbSize = sizeof(wc);
-    wc.lpfnWndProc = SettingsWndProc;
-    wc.hInstance = GetModuleHandleW(nullptr);
-    wc.lpszClassName = SETTINGS_CLASS;
-    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.style = CS_OWNDC; // For double buffering
-    RegisterClassExW(&wc);
-    
-    RECT gameRect;
-    GetWindowRect(gameWindow, &gameRect);
-    
-    g_SettingsWindow = CreateWindowExW(
-        WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-        SETTINGS_CLASS,
-        L"",
-        WS_POPUP,
-        gameRect.left + 50, gameRect.top + 50,
-        280, 320,
-        nullptr, nullptr, GetModuleHandleW(nullptr), nullptr
-    );
-    
-    if (g_SettingsWindow) {
-        ShowWindow(g_SettingsWindow, SW_SHOWNOACTIVATE);
-        LogRaw("Settings window created!");
-    }
-}
+// Deprecated GDI Window code removed. ImGui Overlay is now used.
 
 void InputLoop() {
-    LogRaw("Starting InputLoop...");
+    LogRaw("InputLoop: Running (Background Handler)...");
     
-    HWND gameWindow = FindFiveMWindow();
-    if (gameWindow) {
-        CreateSettingsWindow(gameWindow);
-    }
+    // We don't need to create a window anymore.
+    // The ImGui Overlay hooks the game window directly.
     
     while (g_Initialized) {
-        if (g_SettingsWindow) {
-            MSG msg;
-            while (PeekMessageW(&msg, g_SettingsWindow, 0, 0, PM_REMOVE)) {
-                TranslateMessage(&msg);
-                DispatchMessageW(&msg);
-            }
-        }
-        
-        // F9 - Toggle Frame Gen
+        // F9 - Toggle Frame Gen / Upscaling
         if (GetAsyncKeyState(VK_F9) & 1) {
             g_FrameGenConfig.enabled = !g_FrameGenConfig.enabled;
-            if (g_SettingsWindow) InvalidateRect(g_SettingsWindow, NULL, FALSE);
+            LogRaw("Hotkey: F9 pressed (FrameGen %s)", g_FrameGenConfig.enabled ? "Enabled" : "Disabled");
         }
         
-        // F10 - Toggle Window
+        // F10 - Toggle Overlay (Fallback)
         if (GetAsyncKeyState(VK_F10) & 1) {
-            g_FrameGenConfig.showOverlay = !g_FrameGenConfig.showOverlay;
-            if (g_SettingsWindow) {
-                ShowWindow(g_SettingsWindow, g_FrameGenConfig.showOverlay ? SW_SHOWNOACTIVATE : SW_HIDE);
+            if (g_Overlay) {
+                g_Overlay->Toggle();
+                LogRaw("Hotkey: F10 pressed (Overlay Toggled)");
+            } else {
+                LogRaw("Hotkey: F10 pressed but g_Overlay is NULL!");
             }
         }
         
-        // F7 - Cycle Quality
-        if (GetAsyncKeyState(VK_F7) & 1) {
-            int q = static_cast<int>(g_FrameGenConfig.quality);
-            q = (q + 1) % 4;
-            g_FrameGenConfig.quality = static_cast<FiveMFrameGen::QualityPreset>(q);
-            if (g_SettingsWindow) InvalidateRect(g_SettingsWindow, NULL, FALSE);
+        // Monitor config changes to backend
+        static FiveMFrameGen::QualityPreset lastQuality = g_FrameGenConfig.quality;
+        if (g_FrameGenConfig.quality != lastQuality) {
+            SetD3D12Quality((int)g_FrameGenConfig.quality);
+            lastQuality = g_FrameGenConfig.quality;
         }
-        
-        Sleep(16);
+
+        Sleep(50);
     }
     
-    if (g_SettingsWindow) DestroyWindow(g_SettingsWindow);
     LogRaw("InputLoop exited");
 }
+
+// Forward declaration
+void SetD3D12Overlay(void* overlay);
+
+// ...
 
 void InitializeModSafe() {
     LogRaw("InitializeModSafe: Step 1 - Entry");
     
     try {
-        // Skip complex initialization - just enable the overlay for testing
         LogRaw("InitializeModSafe: Step 2 - Waiting for window");
         
         HWND gameWindow = nullptr;
@@ -469,40 +180,40 @@ void InitializeModSafe() {
             LogRaw("ERROR: Could not find game window");
             return;
         }
-        LogRaw("InitializeModSafe: Step 3 - Window found: 0x%p", gameWindow);
         
-        // Check if D3D12 is being used (FiveM uses D3D12!)
+        // Create Overlay Instance early
+        g_Overlay = std::make_unique<FiveMFrameGen::Overlay::ImGuiOverlay>();
+        
+        // Check if D3D12 is being used
         bool useD3D12 = GetModuleHandleA("d3d12.dll") != nullptr;
         LogRaw("InitializeModSafe: Step 4 - D3D12 detected: %s", useD3D12 ? "YES" : "NO");
         
-        // Wait for DX
-        LogRaw("InitializeModSafe: Step 5 - Waiting 3s for DirectX");
-        Sleep(3000);
+        Sleep(3000); // Wait for DX
         
         if (useD3D12) {
-            // FiveM uses D3D12 - use D3D12 hooks
-            LogRaw("InitializeModSafe: Step 6 - Using D3D12 hooks for FiveM");
+            LogRaw("InitializeModSafe: Using D3D12 path");
             
-            // Use MinHook to detect - D3D12 init function is in hooks_d3d12.cpp
-            bool InitD3D12Hooks(HWND);
-            
-            if (!InitD3D12Hooks(gameWindow)) {
-                LogRaw("ERROR: D3D12 Hooks Init Failed - falling back to D3D11");
-                useD3D12 = false;
-            } else {
-                LogRaw("InitializeModSafe: D3D12 hooks installed successfully!");
+            if (InitD3D12Hooks(gameWindow)) {
+                LogRaw("InitializeModSafe: D3D12 hooks installed!");
+                
+                // Pass Overlay to D3D12 Backend
+                SetD3D12Overlay(g_Overlay.get());
+                
                 g_Initialized = true;
-                LogRaw("InitializeModSafe: SUCCESS! Starting InputLoop (D3D12 mode)");
+                // Enable by default
+                g_FrameGenConfig.showOverlay = true;
+                
                 InputLoop();
                 return;
             }
+            LogRaw("ERROR: D3D12 Hooks failed, trying D3D11 fallback...");
+            useD3D12 = false;
         }
         
-        // Fallback to D3D11 if D3D12 not available
-        LogRaw("InitializeModSafe: Step 6 - Creating D3D11 Hooks");
+        // D3D11 Path
+        LogRaw("InitializeModSafe: Using D3D11 path");
         g_Hooks = std::make_unique<FiveMFrameGen::Core::Hooks>();
         
-        LogRaw("InitializeModSafe: Step 7 - Initializing D3D11 Hooks");
         if (!g_Hooks->Initialize(gameWindow)) {
             LogRaw("ERROR: Hooks Init Failed");
             return;
@@ -732,6 +443,7 @@ FRAMEGEN_API Backend GetBackend() {
 
 FRAMEGEN_API void SetQualityPreset(QualityPreset preset) {
     g_FrameGenConfig.quality = preset;
+    SetD3D12Quality((int)preset);
     
     if (g_FrameGenerator) {
         g_FrameGenerator->SetQuality(preset);
