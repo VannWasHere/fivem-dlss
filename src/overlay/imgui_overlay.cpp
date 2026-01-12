@@ -114,32 +114,43 @@ bool ImGuiOverlay::InitializeD3D12(ID3D12Device* device, int numFrames, DXGI_FOR
 void ImGuiOverlay::DetectGPU() {
     m_GPUInfo = { "Unknown GPU", 0, false, false, false };
     
-    // Prefer DX11 Device if available for simple query, or DX12
-    IUnknown* device = m_IsD3D12 ? (IUnknown*)m_Device12.Get() : (IUnknown*)m_Device11;
+    IDXGIAdapter* adapter = nullptr;
     
-    IDXGIDevice* dxgiDevice = nullptr;
-    if (device && SUCCEEDED(device->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDevice))) {
-        IDXGIAdapter* adapter = nullptr;
-        if (SUCCEEDED(dxgiDevice->GetAdapter(&adapter))) {
-            DXGI_ADAPTER_DESC desc;
-            if (SUCCEEDED(adapter->GetDesc(&desc))) {
-                char name[128];
-                size_t charsConverted = 0;
-                wcstombs_s(&charsConverted, name, desc.Description, 128);
-                m_GPUInfo.name = name;
-                m_GPUInfo.vramMB = desc.DedicatedVideoMemory / (1024 * 1024);
-                m_GPUInfo.isNvidia = (desc.VendorId == 0x10DE);
-                
-                std::string sName = name;
-                std::transform(sName.begin(), sName.end(), sName.begin(), ::toupper);
-                if (m_GPUInfo.isNvidia && sName.find("RTX") != std::string::npos) {
-                    m_GPUInfo.isRTX = true;
-                }
-                m_GPUInfo.isSupported = true; 
-            }
-            adapter->Release();
+    if (m_IsD3D12 && m_Device12) {
+        // For D3D12, we need to get adapter via DXGI factory
+        IDXGIFactory4* factory = nullptr;
+        if (SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory)))) {
+            LUID luid = m_Device12->GetAdapterLuid();
+            factory->EnumAdapterByLuid(luid, IID_PPV_ARGS(&adapter));
+            factory->Release();
         }
-        dxgiDevice->Release();
+    } else if (m_Device11) {
+        // D3D11 path - use IDXGIDevice
+        IDXGIDevice* dxgiDevice = nullptr;
+        if (SUCCEEDED(m_Device11->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDevice))) {
+            dxgiDevice->GetAdapter(&adapter);
+            dxgiDevice->Release();
+        }
+    }
+    
+    if (adapter) {
+        DXGI_ADAPTER_DESC desc;
+        if (SUCCEEDED(adapter->GetDesc(&desc))) {
+            char name[128];
+            size_t charsConverted = 0;
+            wcstombs_s(&charsConverted, name, desc.Description, 128);
+            m_GPUInfo.name = name;
+            m_GPUInfo.vramMB = desc.DedicatedVideoMemory / (1024 * 1024);
+            m_GPUInfo.isNvidia = (desc.VendorId == 0x10DE);
+            
+            std::string sName = name;
+            std::transform(sName.begin(), sName.end(), sName.begin(), ::toupper);
+            if (m_GPUInfo.isNvidia && sName.find("RTX") != std::string::npos) {
+                m_GPUInfo.isRTX = true;
+            }
+            m_GPUInfo.isSupported = true;
+        }
+        adapter->Release();
     }
 }
 
