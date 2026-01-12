@@ -39,6 +39,7 @@ set(SOURCES
     src/frame_gen/fsr3_backend.cpp
     src/frame_gen/optical_flow.cpp
     src/frame_gen/frame_buffer.cpp
+    src/frame_gen/d3d12_backend.cpp
     src/overlay/imgui_overlay.cpp
     src/overlay/config_ui.cpp
     src/utils/logger.cpp

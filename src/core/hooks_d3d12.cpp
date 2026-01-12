@@ -6,11 +6,13 @@
 
 #include "hooks.h"
 #include "../utils/logger.h"
+#include "../frame_gen/d3d12_backend.h"
 
 #include <MinHook.h>
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <wrl/client.h>
+#include <memory> 
 
 using Microsoft::WRL::ComPtr;
 
@@ -39,6 +41,9 @@ static ID3D12Device* s_Device12 = nullptr;
 static PresentCallback s_RenderCallback;
 static bool s_D3D12Initialized = false;
 static HWND s_GameWindow = nullptr;
+
+// Frame Generator
+static std::unique_ptr<FiveMFrameGen::FrameGen::D3D12FrameGenerator> g_D3D12Generator;
 
 // Forward declarations
 void STDMETHODCALLTYPE HookedExecuteCommandLists(
@@ -170,6 +175,9 @@ bool InitD3D12Hooks(HWND gameWindow) {
         return false;
     }
     
+    // Initialize Frame Generator managed pointer
+    g_D3D12Generator = std::make_unique<FiveMFrameGen::FrameGen::D3D12FrameGenerator>();
+    
     Utils::Logger::Info("D3D12 hooks ready!");
     s_D3D12Initialized = true;
     
@@ -198,14 +206,32 @@ HRESULT STDMETHODCALLTYPE HookedPresent12(
     UINT SyncInterval,
     UINT Flags
 ) {
-    static bool firstCall = true;
-    if (firstCall) {
-        firstCall = false;
-        pSwapChain->QueryInterface(IID_PPV_ARGS(&s_SwapChain12));
-        Utils::Logger::Info("D3D12: Captured SwapChain!");
+    if (!s_CommandQueue) {
+        // We haven't captured queue yet, likely first frame
+        return s_OriginalPresent12(pSwapChain, SyncInterval, Flags);
+    }
+
+    static bool generatorInitialized = false;
+    if (!generatorInitialized && g_D3D12Generator) {
+        IDXGISwapChain3* swapChain3 = nullptr;
+        if (SUCCEEDED(pSwapChain->QueryInterface(IID_PPV_ARGS(&swapChain3)))) {
+            Utils::Logger::Info("Initializing Frame Gen Backend...");
+            if (g_D3D12Generator->Initialize(s_CommandQueue, swapChain3)) {
+                generatorInitialized = true;
+                Utils::Logger::Info("Frame Gen Backend Ready!");
+            }
+            swapChain3->Release();
+        }
     }
     
-    // Call render callback if set
+    // Run Frame Generation
+    if (generatorInitialized && g_D3D12Generator) {
+        // This will inject commands to interpolate and potentially present extra frames
+        // currently it processes and copies to backbuffer
+        g_D3D12Generator->ProcessFrame();
+    }
+    
+    // Call render callback if set (UI Overlay)
     if (s_RenderCallback) {
         s_RenderCallback(pSwapChain);
     }
