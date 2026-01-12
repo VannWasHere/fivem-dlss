@@ -1,0 +1,50 @@
+# Compiled binaries and objects
+*.obj
+*.o
+*.lib
+*.dll
+*.asi
+*.exe
+*.pdb
+*.ilk
+*.exp
+*.res
+
+# Build directories
+build/
+bin/
+lib/
+out/
+x64/
+Debug/
+Release/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.sln
+*.vcxproj
+*.filters
+*.user
+*.opendb
+*.db
+*.ipch
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CMakeScripts/
+Makefile
+Testing/
+install/
+
+# Logs and config
+*.log
+FiveMFrameGen.ini
+FiveM_DEBUG_LOAD.txt
+
+# OS files
+.DS_Store
+Thumbs.db
