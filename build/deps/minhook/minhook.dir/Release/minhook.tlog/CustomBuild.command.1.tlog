@@ -1,0 +1,10 @@
+^C:\JUSTINE\LEARN\GTA\MOD-DLSS\DEPS\MINHOOK\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Justine/Learn/gta/mod-dlss -BC:/Justine/Learn/gta/mod-dlss/build --check-stamp-file C:/Justine/Learn/gta/mod-dlss/build/deps/minhook/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

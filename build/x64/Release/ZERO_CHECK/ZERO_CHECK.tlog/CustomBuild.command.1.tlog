@@ -1,0 +1,10 @@
+^C:\JUSTINE\LEARN\GTA\MOD-DLSS\BUILD\CMAKEFILES\C3BC4B1DC5FEB3F4333CC877FA0D6B4E\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Justine/Learn/gta/mod-dlss -BC:/Justine/Learn/gta/mod-dlss/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Justine/Learn/gta/mod-dlss/build/FiveMFrameGen.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

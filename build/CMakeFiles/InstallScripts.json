@@ -1,0 +1,9 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/Justine/Learn/gta/mod-dlss/build/cmake_install.cmake",
+		"C:/Justine/Learn/gta/mod-dlss/build/deps/minhook/cmake_install.cmake",
+		"C:/Justine/Learn/gta/mod-dlss/build/deps/imgui/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

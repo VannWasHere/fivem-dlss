@@ -1,0 +1,13 @@
+C:\Justine\Learn\gta\mod-dlss\src\main.cpp;C:\Justine\Learn\gta\mod-dlss\build\FiveMFrameGen.dir\Release\main.obj
+C:\Justine\Learn\gta\mod-dlss\src\core\hooks.cpp;C:\Justine\Learn\gta\mod-dlss\build\FiveMFrameGen.dir\Release\hooks.obj
+C:\Justine\Learn\gta\mod-dlss\src\core\d3d11_wrapper.cpp;C:\Justine\Learn\gta\mod-dlss\build\FiveMFrameGen.dir\Release\d3d11_wrapper.obj
+C:\Justine\Learn\gta\mod-dlss\src\core\swap_chain_hook.cpp;C:\Justine\Learn\gta\mod-dlss\build\FiveMFrameGen.dir\Release\swap_chain_hook.obj
+C:\Justine\Learn\gta\mod-dlss\src\frame_gen\frame_generator.cpp;C:\Justine\Learn\gta\mod-dlss\build\FiveMFrameGen.dir\Release\frame_generator.obj
+C:\Justine\Learn\gta\mod-dlss\src\frame_gen\fsr3_backend.cpp;C:\Justine\Learn\gta\mod-dlss\build\FiveMFrameGen.dir\Release\fsr3_backend.obj
+C:\Justine\Learn\gta\mod-dlss\src\frame_gen\optical_flow.cpp;C:\Justine\Learn\gta\mod-dlss\build\FiveMFrameGen.dir\Release\optical_flow.obj
+C:\Justine\Learn\gta\mod-dlss\src\frame_gen\frame_buffer.cpp;C:\Justine\Learn\gta\mod-dlss\build\FiveMFrameGen.dir\Release\frame_buffer.obj
+C:\Justine\Learn\gta\mod-dlss\src\overlay\imgui_overlay.cpp;C:\Justine\Learn\gta\mod-dlss\build\FiveMFrameGen.dir\Release\imgui_overlay.obj
+C:\Justine\Learn\gta\mod-dlss\src\overlay\config_ui.cpp;C:\Justine\Learn\gta\mod-dlss\build\FiveMFrameGen.dir\Release\config_ui.obj
+C:\Justine\Learn\gta\mod-dlss\src\utils\logger.cpp;C:\Justine\Learn\gta\mod-dlss\build\FiveMFrameGen.dir\Release\logger.obj
+C:\Justine\Learn\gta\mod-dlss\src\utils\config.cpp;C:\Justine\Learn\gta\mod-dlss\build\FiveMFrameGen.dir\Release\config.obj
+C:\Justine\Learn\gta\mod-dlss\src\utils\performance.cpp;C:\Justine\Learn\gta\mod-dlss\build\FiveMFrameGen.dir\Release\performance.obj

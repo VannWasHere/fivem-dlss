@@ -1,0 +1,13 @@
+C:/Justine/Learn/gta/mod-dlss/build/CMakeFiles/FiveMFrameGen.dir
+C:/Justine/Learn/gta/mod-dlss/build/CMakeFiles/PACKAGE.dir
+C:/Justine/Learn/gta/mod-dlss/build/CMakeFiles/INSTALL.dir
+C:/Justine/Learn/gta/mod-dlss/build/CMakeFiles/ALL_BUILD.dir
+C:/Justine/Learn/gta/mod-dlss/build/CMakeFiles/ZERO_CHECK.dir
+C:/Justine/Learn/gta/mod-dlss/build/deps/minhook/CMakeFiles/minhook.dir
+C:/Justine/Learn/gta/mod-dlss/build/deps/minhook/CMakeFiles/PACKAGE.dir
+C:/Justine/Learn/gta/mod-dlss/build/deps/minhook/CMakeFiles/INSTALL.dir
+C:/Justine/Learn/gta/mod-dlss/build/deps/minhook/CMakeFiles/ALL_BUILD.dir
+C:/Justine/Learn/gta/mod-dlss/build/deps/imgui/CMakeFiles/imgui.dir
+C:/Justine/Learn/gta/mod-dlss/build/deps/imgui/CMakeFiles/PACKAGE.dir
+C:/Justine/Learn/gta/mod-dlss/build/deps/imgui/CMakeFiles/INSTALL.dir
+C:/Justine/Learn/gta/mod-dlss/build/deps/imgui/CMakeFiles/ALL_BUILD.dir
